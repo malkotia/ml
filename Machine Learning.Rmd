@@ -1,0 +1,147 @@
+---
+title: "Machine Learning  Assignment"
+author: "Gulab Singh"
+date: "30 March 2017"
+output: md_document
+---
+
+```{r setup, include=TRUE,eval=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+The awareness on the fitness is increasing day-by-day and nowadays people are very consciously monitoring how much of a particular activity they do. In order to reap full benefits, it is also important to do the physical activities in the correct way and awareness on the same is lacking. 
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E) (*)
+
+In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbbell of these 6 participants and build a model to predict the manner in which the exercises were done. The data sets were taken from below site.
+
+http://groupware.les.inf.puc-rio.br/har#ixzz4cpFOJ4A8
+
+
+Reference: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+## Approach steps
+
+* Load training and testing data and partitioning
+* Data Processing (Dimension reduction)
+- Remove variables where all values are missing
+- Remove variables with "near zero values" or "near zero variance"
+- Remove variables which do not have significance for building model, i.e. these are only used to identify a particular row of data
+
+* Apply all transformations done to training data to the validation data and test data
+
+* Build a model using random forest algorithm
+* Validate the model on validation data
+* Ensure that confusion matrix suggests high accuracy
+* Apply the model to predict values of "classe" for testing dataset
+
+
+## Load training and testing data and partitioning
+
+We will read the training and testing data and partition training data to training and validation data
+
+```{r Loaddata}
+# Read files, replace #div/0!, and "" with NA
+set.seed(23465)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(reprtree)
+library(rattle)					
+library(rpart.plot)			
+library(RColorBrewer)		
+library(party)					
+library(partykit)				
+
+# replace #div/0!, and "" with NA so that the data is clean and a consistent logic can be applied
+trainset <- read.csv("pml-training.csv",na.strings=c("NA","#DIV/0!", ""))
+testset <- read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!", ""))
+dim(trainset)
+dim(testset)
+
+#create partition on training data
+inTrain <- createDataPartition(y=trainset$classe, p=0.70, list=FALSE)
+traindata <- trainset[inTrain, ] 
+validationdata <- trainset[-inTrain, ]
+```
+
+
+## Data Processing (Dimension reduction)
+
+There are 159 variables in the training set and we will now identify the variables which are not important in our modeling and therefore can be dropped from analysis.
+The first 7 columns are just data related to identification of the individual observations and therefore can be dropped.
+so we will drop variables user_name, raw_timestamp_part_1,	raw_timestamp_part_2,	cvtd_timestamp,	new_window,	num_window 
+
+```{r proc}
+traindata <- traindata[,-c(1:7)]
+dim(traindata)
+# Next we will remove variables which have near zero values or near zero variance
+nzv <- nearZeroVar(traindata)
+filteredtraindata <- traindata[, -nzv]
+
+dim(filteredtraindata)
+
+# let us reduce the dimesnsions by removing variables which have NA values in most rows
+filteredtraindata<-filteredtraindata[,colSums(is.na(filteredtraindata)) == 0]
+dim(filteredtraindata)
+```
+
+We can now see that as a result of above steps we have been able to reduce the number of variables from 159 to 53, we can now repeat this transformation process to validation data and testing data
+
+## Apply all transformations done to training data to the validation data and test data
+```{r transform1}
+# Repeat the transformations to validation data and testing dataset
+validationdata <-validationdata[names(filteredtraindata)]
+dim(validationdata)
+# testing data doesn't have "classe"" column, so we need to exclude it from below transformation
+testvariables <-colnames(filteredtraindata[,-53])
+testset <-testset[testvariables]
+dim(testset)
+```
+
+As expected, the number of variables in validation data is same as that in training data (since it is a subset of training data) and the number of variables in testing data is one less than training data as the predicator variable "classe" is missing for the same.
+
+## Build a model using random forest algorithm
+```{r modelfit}
+## Use randomForest for model fitting
+fit1 <- randomForest(classe ~ ., data=filteredtraindata)
+## Apply model to predict values for validation data set and check accuracy
+
+predicvalRF <- predict(fit1,validationdata,type="class",na.action=na.exclude)
+cmRF <- confusionMatrix(predicvalRF,validationdata$classe)
+print(cmRF)
+# The output of random forest node-1 of tree is included in Appendix
+
+```
+
+## Build a model using decision tree of rpart
+```{r modelfit1}
+## Use rpart for model fitting
+
+fit2 <- rpart(classe ~ ., data=filteredtraindata, method="class")
+predicvalRP <- predict(fit2,validationdata,type="class",na.action=na.exclude)
+cmRP <- confusionMatrix(predicvalRP,validationdata$classe)
+print(cmRP)
+prp(fit2,fallen.leaves=TRUE,tweak=1.6,type=4,box.palette="BuGn")
+```
+
+## Results and Conclusions
+
+We have seen above that it is crucial to remove the insignificant variables from the data for the predication model, if considered in the model, it could introduce a false influence and therefore result in inaccuracy in the model. By reducing number of variables from 159 to 53 and applying random forest method for prediction, we have been able to achieve a highly accurate prediction of 99.44% which varies between 99.21% and 99.61% for a 95% confidence level. As expected, the accuracy of rpart method is much less as compared to random forest. The accuracy is  77.58% which varies between 74.46% and 76.68% for a 95% confidence level. We will therefore use randam forest fit to predict the "classe"" values for test data.
+
+```{r predicttest}
+
+predicvaltest <- predict(fit1, testset,type = "class")
+print(predicvaltest)
+```
+
+## Appendix: Output of tree structure used by Random Forest
+```{r Appendix}
+
+getTree(fit1,k=1)
+```
+
+
